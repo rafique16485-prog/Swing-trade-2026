@@ -3,3 +3,4 @@ pandas
 yfinance
 twilio
 schedule
+matplotlib
