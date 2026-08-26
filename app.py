@@ -13,7 +13,6 @@ st.set_page_config(
 # Constants & Files
 JOURNAL_FILE = "trade_journal.csv"
 WATCHLIST = [
-WATCHLIST = [
     "ADANIENT.NS",
     "ADANIPORTS.NS",
     "APOLLOHOSP.NS",
@@ -61,8 +60,7 @@ WATCHLIST = [
     "TECHM.NS",
     "TITAN.NS",
     "ULTRACEMCO.NS",
-    "WIPRO.NS",
-]
+    "WIPRO.NS",]
 
 # ================= SIDEBAR: CAPITAL & RISK SETTINGS ================= ⚖️
 st.sidebar.header("💼 Capital & Risk Settings")
