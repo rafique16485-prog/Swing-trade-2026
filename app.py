@@ -20,22 +20,11 @@ JOURNAL_FILE = "trade_journal.csv"
 # Custom CSS for Sleek Professional UI
 st.markdown("""
 <style>
-    /* Global Clean Font & Spacing */
     html, body, [class*="css"] {
         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
     }
-    
-    /* Compact Metric Box Styling */
-    .trade-card {
-        background-color: #ffffff;
-        border: 1px solid #e6e8eb;
-        border-radius: 10px;
-        padding: 16px 20px;
-        margin-bottom: 16px;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.04);
-    }
     .metric-title {
-        font-size: 0.78rem;
+        font-size: 0.75rem;
         color: #6c757d;
         text-transform: uppercase;
         letter-spacing: 0.5px;
@@ -51,7 +40,6 @@ st.markdown("""
     .val-sl { color: #cf222e; }
     .val-target { color: #1a7f37; }
     
-    /* Pill Badges */
     .badge-buy {
         background-color: #dafbe1;
         color: #1a7f37;
@@ -88,7 +76,7 @@ st.markdown("""
         font-size: 0.82rem;
         color: #57606a;
         margin-top: 4px;
-        margin-bottom: 12px;
+        margin-bottom: 8px;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -107,7 +95,7 @@ WATCHLIST = [
     "TITAN.NS", "ULTRACEMCO.NS", "WIPRO.NS"
 ]
 
-# 2. Sidebar - Capital & Risk Settings
+# 2. Sidebar - Portfolio & Risk Settings
 st.sidebar.markdown("#### 💼 Portfolio & Risk Engine")
 total_capital = st.sidebar.number_input("Total Capital (₹)", min_value=10000, value=100000, step=5000)
 risk_pct = st.sidebar.slider("Risk Per Trade (%)", min_value=0.5, max_value=3.0, value=1.0, step=0.25) / 100
@@ -118,7 +106,7 @@ max_risk_amount = round(total_capital * risk_pct, 2)
 st.sidebar.metric("🛡️ Max Risk Per Trade", f"₹{max_risk_amount:,.0f}")
 st.sidebar.caption("Position sizing automatically keeps capital drawdowns contained.")
 
-# 3. Technical Indicators
+# 3. Indicator Calculation
 def calculate_indicators(df):
     df["EMA_20"] = df["Close"].ewm(span=20, adjust=False).mean()
     df["EMA_50"] = df["Close"].ewm(span=50, adjust=False).mean()
@@ -156,7 +144,7 @@ def run_swing_scanner():
             ema50 = float(latest["EMA_50"])
             rsi = float(latest["RSI"])
 
-            # Strategy Criteria
+            # Setup criteria: EMA Trend & RSI momentum
             if ema20 > ema50 and rsi > 50:
                 entry = round(cmp_price, 2)
                 swing_low = round(float(df["Low"].tail(7).min()), 2)
@@ -170,11 +158,11 @@ def run_swing_scanner():
                     if rsi > 70:
                         action = "WAIT / PULLBACK"
                         badge_class = "badge-wait"
-                        action_desc = "RSI Overbought (>70). Wait for retracement near 20 EMA."
+                        action_desc = "RSI Overbought (>70). Wait for small pullback near 20 EMA."
                     elif (risk_per_share / entry) > 0.08:
                         action = "AVOID / WIDE SL"
                         badge_class = "badge-avoid"
-                        action_desc = "Stop Loss distance is over 8%. Unfavorable risk-reward balance."
+                        action_desc = "Stop Loss is too wide (>8%). Risk-reward is unfavorable."
                     else:
                         action = "BUY / ENTER"
                         badge_class = "badge-buy"
@@ -205,13 +193,13 @@ def run_swing_scanner():
 def save_to_journal(trade_data):
     row = pd.DataFrame([{
         "Date": datetime.date.today().strftime("%Y-%m-%d"),
-        "Stock": trade_data["Stock"],
-        "Signal": trade_data["Action"],
-        "Entry_CMP": trade_data["CMP"],
-        "Stop_Loss": trade_data["StopLoss"],
-        "Target": trade_data["Target"],
-        "Qty": trade_data["Qty"],
-        "Capital_Allocated": trade_data["TotalCapital"],
+        "Stock": trade_data.get("Stock", "NA"),
+        "Signal": trade_data.get("Action", "BUY"),
+        "Entry_CMP": trade_data.get("CMP", 0),
+        "Stop_Loss": trade_data.get("StopLoss", 0),
+        "Target": trade_data.get("Target", 0),
+        "Qty": trade_data.get("Qty", 0),
+        "Capital_Allocated": trade_data.get("TotalCapital", 0),
         "Status": "OPEN"
     }])
     if not os.path.exists(JOURNAL_FILE):
@@ -231,79 +219,83 @@ with tabs[0]:
     with t_col2:
         scan_btn = st.button("🔄 Scan Market", type="primary", use_container_width=True)
 
-    if scan_btn or "scanned_trades" in st.session_state:
-        if scan_btn:
-            st.session_state.scanned_trades = run_swing_scanner()
+    if scan_btn:
+        st.session_state.scanned_trades = run_swing_scanner()
         
-        trades = st.session_state.get("scanned_trades", [])
+    trades = st.session_state.get("scanned_trades", [])
+    
+    if trades:
+        st.success(f"⚡ {len(trades)} Setups Detected")
         
-        if trades:
-            st.success(f"⚡ {len(trades)} Setups Detected")
+        for idx, trade in enumerate(trades):
+            action_label = trade.get("Action", "BUY / ENTER")
+            badge_cls = trade.get("BadgeClass", "badge-buy")
+            desc = trade.get("ActionDesc", "Optimal setup")
+            rsi_val = trade.get("RSI", 0)
+            stock_name = trade.get("Stock", "")
             
-            for idx, trade in enumerate(trades):
-                # Professional Card UI
-                st.markdown(f"""
-                <div class="trade-card">
-                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 4px;">
-                        <span class="stock-title">📌 {trade['Stock']}</span>
-                        <span>
-                            <span class="{trade['BadgeClass']}">{trade['Action']}</span>
-                            <span style="font-size:0.8rem; color:#57606a; margin-left:8px; font-weight:600;">RSI: {trade['RSI']}</span>
-                        </span>
-                    </div>
-                    <div class="advice-text">💡 <b>AI Signal Note:</b> {trade['ActionDesc']}</div>
-                </div>
-                """, unsafe_allow_html=True)
+            # Stock Header & Badge
+            st.markdown(f"""
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-top:10px; margin-bottom: 2px;">
+                <span class="stock-title">📌 {stock_name}</span>
+                <span>
+                    <span class="{badge_cls}">{action_label}</span>
+                    <span style="font-size:0.8rem; color:#57606a; margin-left:8px; font-weight:600;">RSI: {rsi_val}</span>
+                </span>
+            </div>
+            <div class="advice-text">💡 <b>AI Signal Note:</b> {desc}</div>
+            """, unsafe_allow_html=True)
 
-                # Metric Columns
-                m1, m2, m3, m4, m5 = st.columns(5)
-                m1.markdown(f"<div class='metric-title'>CMP / Entry</div><div class='metric-val val-entry'>₹{trade['CMP']}</div>", unsafe_allow_html=True)
-                m2.markdown(f"<div class='metric-title'>Stop Loss</div><div class='metric-val val-sl'>₹{trade['StopLoss']}</div>", unsafe_allow_html=True)
-                m3.markdown(f"<div class='metric-title'>Target (1:{rr_ratio})</div><div class='metric-val val-target'>₹{trade['Target']}</div>", unsafe_allow_html=True)
-                m4.markdown(f"<div class='metric-title'>Safe Qty</div><div class='metric-val'>{trade['Qty']} Qty</div>", unsafe_allow_html=True)
-                m5.markdown(f"<div class='metric-title'>Holding</div><div class='metric-val' style='font-size:0.95rem;'>{trade['HoldingPeriod']}</div>", unsafe_allow_html=True)
+            # Metric Columns
+            m1, m2, m3, m4, m5 = st.columns(5)
+            m1.markdown(f"<div class='metric-title'>CMP / Entry</div><div class='metric-val val-entry'>₹{trade.get('CMP', 0)}</div>", unsafe_allow_html=True)
+            m2.markdown(f"<div class='metric-title'>Stop Loss</div><div class='metric-val val-sl'>₹{trade.get('StopLoss', 0)}</div>", unsafe_allow_html=True)
+            m3.markdown(f"<div class='metric-title'>Target (1:{rr_ratio})</div><div class='metric-val val-target'>₹{trade.get('Target', 0)}</div>", unsafe_allow_html=True)
+            m4.markdown(f"<div class='metric-title'>Safe Qty</div><div class='metric-val'>{trade.get('Qty', 0)} Qty</div>", unsafe_allow_html=True)
+            m5.markdown(f"<div class='metric-title'>Holding</div><div class='metric-val' style='font-size:0.95rem;'>{trade.get('HoldingPeriod', '1 - 3 W')}</div>", unsafe_allow_html=True)
+            
+            st.write("")
+            
+            # Action Buttons
+            b_col1, b_col2, b_col3 = st.columns([1, 1, 1])
+            
+            with b_col1:
+                single_msg = (
+                    f"🚀 *Swing Trade Alert: {stock_name}*\n"
+                    f"🚦 *Signal:* {action_label}\n\n"
+                    f"• *CMP / Entry:* ₹{trade.get('CMP', 0)}\n"
+                    f"• *Stop Loss:* ₹{trade.get('StopLoss', 0)}\n"
+                    f"• *Target (1:{rr_ratio}):* ₹{trade.get('Target', 0)}\n"
+                    f"• *Safe Qty:* {trade.get('Qty', 0)} shares\n"
+                    f"• *Holding:* {trade.get('HoldingPeriod', '1 - 3 Weeks')}\n"
+                    f"• *Note:* {desc}\n\n"
+                    f"⚠️ _Trade with risk discipline!_"
+                )
+                wa_url = f"https://api.whatsapp.com/send?text={urllib.parse.quote(single_msg)}"
+                st.markdown(
+                    f'<a href="{wa_url}" target="_blank">'
+                    f'<button style="background-color:#25D366;color:white;width:100%;padding:7px;border:none;border-radius:6px;cursor:pointer;font-weight:600;font-size:0.85rem;">📲 WhatsApp Alert</button>'
+                    f'</a>',
+                    unsafe_allow_html=True
+                )
                 
-                st.write("")
-                
-                # Action Buttons Row
-                b_col1, b_col2, b_col3 = st.columns([1, 1, 1])
-                
-                with b_col1:
-                    single_msg = (
-                        f"🚀 *Swing Trade Alert: {trade['Stock']}*\n"
-                        f"🚦 *Signal:* {trade['Action']}\n\n"
-                        f"• *CMP / Entry:* ₹{trade['CMP']}\n"
-                        f"• *Stop Loss:* ₹{trade['StopLoss']}\n"
-                        f"• *Target (1:{rr_ratio}):* ₹{trade['Target']}\n"
-                        f"• *Safe Qty:* {trade['Qty']} shares\n"
-                        f"• *Holding:* {trade['HoldingPeriod']}\n"
-                        f"• *Note:* {trade['ActionDesc']}\n\n"
-                        f"⚠️ _Trade with risk discipline!_"
-                    )
-                    wa_url = f"https://api.whatsapp.com/send?text={urllib.parse.quote(single_msg)}"
-                    st.markdown(
-                        f'<a href="{wa_url}" target="_blank">'
-                        f'<button style="background-color:#25D366;color:white;width:100%;padding:7px;border:none;border-radius:6px;cursor:pointer;font-weight:600;font-size:0.85rem;">📲 WhatsApp Alert</button>'
-                        f'</a>',
-                        unsafe_allow_html=True
-                    )
-                    
-                with b_col2:
-                    if st.button("➕ Add to Journal", key=f"j_{idx}", use_container_width=True):
-                        save_to_journal(trade)
-                        st.toast(f"✅ {trade['Stock']} saved to Journal!")
+            with b_col2:
+                if st.button("➕ Add to Journal", key=f"j_{idx}", use_container_width=True):
+                    save_to_journal(trade)
+                    st.toast(f"✅ {stock_name} saved to Journal!")
 
-                with b_col3:
-                    tv_link = f"https://in.tradingview.com/chart/?symbol=NSE:{trade['Stock']}"
-                    st.markdown(
-                        f'<a href="{tv_link}" target="_blank">'
-                        f'<button style="background-color:#0969da;color:white;width:100%;padding:7px;border:none;border-radius:6px;cursor:pointer;font-weight:600;font-size:0.85rem;">📈 Open Chart</button>'
-                        f'</a>',
-                        unsafe_allow_html=True
-                    )
+            with b_col3:
+                tv_link = f"https://in.tradingview.com/chart/?symbol=NSE:{stock_name}"
+                st.markdown(
+                    f'<a href="{tv_link}" target="_blank">'
+                    f'<button style="background-color:#0969da;color:white;width:100%;padding:7px;border:none;border-radius:6px;cursor:pointer;font-weight:600;font-size:0.85rem;">📈 Open Chart</button>'
+                    f'</a>',
+                    unsafe_allow_html=True
+                )
 
-                # Technical Mini Chart
-                with st.expander(f"📊 View Trend Chart ({trade['Stock']})"):
+            # In-App Trend Chart
+            if "df" in trade:
+                with st.expander(f"📊 View Trend Chart ({stock_name})"):
                     chart_df = trade["df"]
                     fig, ax = plt.subplots(figsize=(9, 3.2))
                     ax.plot(chart_df.index, chart_df["Close"], label="Price", color="#0969da", linewidth=1.6)
@@ -315,10 +307,10 @@ with tabs[0]:
                     plt.tight_layout()
                     st.pyplot(fig)
                     plt.close(fig)
-                    
-                st.markdown("<hr style='border-top: 1px solid #f0f2f5; margin: 15px 0;'>", unsafe_allow_html=True)
-        else:
-            st.info("Market scan complete. Koi matching setup nahi mila.")
+                
+            st.markdown("<hr style='border-top: 1px solid #e6e8eb; margin: 12px 0;'>", unsafe_allow_html=True)
+    elif scan_btn:
+        st.info("Market scan complete. Koi matching setup nahi mila.")
 
 # TAB 2: Trade Journal
 with tabs[1]:
@@ -343,7 +335,7 @@ with tabs[1]:
 with tabs[2]:
     st.subheader("📚 Pro Swing Trading Rules")
     st.markdown("""
-    * 🟢 **BUY Signal:** 20 EMA > 50 EMA, RSI 55-70 range mein, aur Stop Loss <8%.
+    * 🟢 **BUY / ENTER:** 20 EMA > 50 EMA, RSI 55-70 range mein, aur Stop Loss <8%.
     * 🟡 **WAIT / PULLBACK:** RSI > 70 par breakout chase na karein, EMA pullback ka intezar karein.
-    * 🔴 **AVOID:** Agar Stop Loss 8% se door ho toh capital risk balance nahi banta.
+    * 🔴 **AVOID / WIDE SL:** Agar Stop Loss 8% se door ho toh capital risk balance nahi banta.
     """)
