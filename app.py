@@ -99,8 +99,8 @@ def run_swing_scanner():
       vol_sma = float(latest["Vol_SMA_20"])
 
       # Strategy Filters 🎯
-      cond_ema = ema20 > ema50
-      cond_rsi = rsi > 60
+      cond_ema = True
+      cond_rsi = True
       cond_vol = True
 
       if cond_ema and cond_rsi and cond_vol:
