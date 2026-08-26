@@ -101,7 +101,7 @@ def run_swing_scanner():
       # Strategy Filters 🎯
       cond_ema = ema20 > ema50
       cond_rsi = rsi > 60
-      true
+      cond_vol = True
 
       if cond_ema and cond_rsi and cond_vol:
         entry = round(close_price, 2)
