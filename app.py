@@ -5,7 +5,7 @@ import numpy as np
 import datetime
 import urllib.parse
 import os
-import streamlit.components.v1 as components
+import matplotlib.pyplot as plt
 
 # 1. Page Configuration
 st.set_page_config(
@@ -31,7 +31,7 @@ WATCHLIST = [
     "TITAN.NS", "ULTRACEMCO.NS", "WIPRO.NS"
 ]
 
-# 2. Sidebar - Professional Risk Calculator
+# 2. Sidebar - Capital & Risk Settings
 st.sidebar.markdown("### 💼 **Portfolio & Risk Engine**")
 total_capital = st.sidebar.number_input("Total Capital (₹)", min_value=10000, value=100000, step=5000)
 risk_pct = st.sidebar.slider("Risk Per Trade (%)", min_value=0.5, max_value=3.0, value=1.0, step=0.25) / 100
@@ -40,9 +40,9 @@ rr_ratio = st.sidebar.slider("Risk-to-Reward Ratio (1:X)", min_value=1.5, max_va
 st.sidebar.markdown("---")
 max_risk_amount = round(total_capital * risk_pct, 2)
 st.sidebar.metric("🛡️ Max Risk Per Trade", f"₹{max_risk_amount}")
-st.sidebar.caption("System strictly limits position size to keep losses bounded.")
+st.sidebar.caption("System position size ko 1% risk ke andar lock rakhta hai.")
 
-# 3. Technical Indicator Computation
+# 3. Indicator Calculation
 def calculate_indicators(df):
     df["EMA_20"] = df["Close"].ewm(span=20, adjust=False).mean()
     df["EMA_50"] = df["Close"].ewm(span=50, adjust=False).mean()
@@ -54,14 +54,14 @@ def calculate_indicators(df):
     df["RSI"] = 100 - (100 / (1 + rs))
     return df
 
-# 4. Scanner Function (Batch Engine)
+# 4. Scanner Function (Batch Mode)
 def run_swing_scanner():
     results = []
-    with st.spinner("⚡ Scanning Nifty 50 with Institutional Filters..."):
+    with st.spinner("⚡ Nifty 50 stocks scan ho rahe hain..."):
         try:
             data = yf.download(WATCHLIST, period="6mo", interval="1d", group_by="ticker", threads=True, progress=False)
         except Exception as e:
-            st.error(f"Error fetching market data: {e}")
+            st.error(f"Data fetch error: {e}")
             return []
 
     for ticker in WATCHLIST:
@@ -80,7 +80,7 @@ def run_swing_scanner():
             ema50 = float(latest["EMA_50"])
             rsi = float(latest["RSI"])
 
-            # Strategy Criteria: EMA Trend Alignment & RSI Momentum
+            # Setup criteria: 20 EMA > 50 EMA & RSI > 55
             if ema20 > ema50 and rsi > 55:
                 entry = round(cmp_price, 2)
                 swing_low = round(float(df["Low"].tail(7).min()), 2)
@@ -93,7 +93,6 @@ def run_swing_scanner():
 
                     if qty > 0:
                         results.append({
-                            "Ticker": ticker,
                             "Stock": ticker.replace(".NS", ""),
                             "CMP": entry,
                             "StopLoss": swing_low,
@@ -102,7 +101,8 @@ def run_swing_scanner():
                             "HoldingPeriod": "1 - 3 Weeks",
                             "TotalCapital": round(qty * entry, 2),
                             "RiskAmount": round(qty * risk_per_share, 2),
-                            "RSI": round(rsi, 2)
+                            "RSI": round(rsi, 2),
+                            "df": df.tail(60)
                         })
         except Exception:
             continue
@@ -126,15 +126,15 @@ def save_to_journal(trade_data):
     else:
         row.to_csv(JOURNAL_FILE, mode='a', header=False, index=False)
 
-# 6. Main UI Layout
-tabs = st.tabs(["🚀 Live Scanner", "📓 Trade Journal", "📚 Trading Playbook & Checklist"])
+# 6. UI Tabs
+tabs = st.tabs(["🚀 Live Scanner", "📓 Trade Journal", "📚 Rules & Discipline"])
 
 # TAB 1: Live Scanner
 with tabs[0]:
     col_t1, col_t2 = st.columns([3, 1])
     with col_t1:
         st.subheader("🎯 High-Probability Swing Setups")
-        st.caption("Strategy: 20 EMA > 50 EMA | RSI Momentum > 55 | Dynamic 7-Day Swing-Low SL")
+        st.caption("Filters: 20 EMA > 50 EMA | RSI Momentum > 55 | 1% Risk Sizing")
     with col_t2:
         scan_btn = st.button("🔄 Scan Market Now", type="primary", use_container_width=True)
 
@@ -145,24 +145,24 @@ with tabs[0]:
         trades = st.session_state.get("scanned_trades", [])
         
         if trades:
-            st.success(f"✨ Found {len(trades)} Qualified Swing Setups!")
+            st.success(f"✨ Total {len(trades)} Setups Match Huye!")
             
             for idx, trade in enumerate(trades):
                 with st.container():
                     st.markdown(f"### 📌 **{trade['Stock']}** &nbsp; `RSI: {trade['RSI']}`")
                     
-                    # Responsive Clean Metric Display
+                    # Responsive Metric Display
                     m1, m2, m3, m4, m5 = st.columns(5)
-                    m1.markdown(f"**CMP / Entry**<br><span style='font-size:1.3rem;font-weight:bold;color:#007BFF;'>₹{trade['CMP']}</span>", unsafe_allow_html=True)
-                    m2.markdown(f"**Stop Loss**<br><span style='font-size:1.3rem;font-weight:bold;color:#DC3545;'>₹{trade['StopLoss']}</span>", unsafe_allow_html=True)
-                    m3.markdown(f"**Target (1:{rr_ratio})**<br><span style='font-size:1.3rem;font-weight:bold;color:#28A745;'>₹{trade['Target']}</span>", unsafe_allow_html=True)
-                    m4.markdown(f"**Safe Qty**<br><span style='font-size:1.3rem;font-weight:bold;'>{trade['Qty']} Shares</span>", unsafe_allow_html=True)
+                    m1.markdown(f"**CMP / Entry**<br><span style='font-size:1.25rem;font-weight:bold;color:#007BFF;'>₹{trade['CMP']}</span>", unsafe_allow_html=True)
+                    m2.markdown(f"**Stop Loss**<br><span style='font-size:1.25rem;font-weight:bold;color:#DC3545;'>₹{trade['StopLoss']}</span>", unsafe_allow_html=True)
+                    m3.markdown(f"**Target (1:{rr_ratio})**<br><span style='font-size:1.25rem;font-weight:bold;color:#28A745;'>₹{trade['Target']}</span>", unsafe_allow_html=True)
+                    m4.markdown(f"**Safe Qty**<br><span style='font-size:1.25rem;font-weight:bold;'>{trade['Qty']} Shares</span>", unsafe_allow_html=True)
                     m5.markdown(f"**Holding**<br><span style='font-size:1.1rem;'>{trade['HoldingPeriod']}</span>", unsafe_allow_html=True)
                     
                     st.write("")
                     
-                    # Action Bar: WhatsApp & Journal Buttons
-                    b_col1, b_col2 = st.columns([1, 1])
+                    # Action Buttons
+                    b_col1, b_col2, b_col3 = st.columns([1, 1, 1])
                     
                     with b_col1:
                         single_msg = (
@@ -171,42 +171,55 @@ with tabs[0]:
                             f"• *Stop Loss:* ₹{trade['StopLoss']}\n"
                             f"• *Target (1:{rr_ratio}):* ₹{trade['Target']}\n"
                             f"• *Safe Qty:* {trade['Qty']} shares\n"
-                            f"• *Expected Holding:* {trade['HoldingPeriod']}\n"
+                            f"• *Holding:* {trade['HoldingPeriod']}\n"
                             f"• *Capital Required:* ₹{trade['TotalCapital']}\n"
                             f"• *Max Risk:* ₹{trade['RiskAmount']}\n\n"
-                            f"⚠️ _Trade with discipline & strict SL!_"
+                            f"⚠️ _Maintain strict discipline!_"
                         )
                         wa_url = f"https://api.whatsapp.com/send?text={urllib.parse.quote(single_msg)}"
                         st.markdown(
                             f'<a href="{wa_url}" target="_blank">'
-                            f'<button style="background-color:#25D366;color:white;width:100%;padding:8px;border:none;border-radius:6px;cursor:pointer;font-weight:bold;">📲 Share on WhatsApp</button>'
+                            f'<button style="background-color:#25D366;color:white;width:100%;padding:8px;border:none;border-radius:6px;cursor:pointer;font-weight:bold;">📲 WhatsApp Alert</button>'
                             f'</a>',
                             unsafe_allow_html=True
                         )
                         
                     with b_col2:
-                        if st.button(f"➕ Add {trade['Stock']} to Journal", key=f"j_{idx}", use_container_width=True):
+                        if st.button(f"➕ Add to Journal", key=f"j_{idx}", use_container_width=True):
                             save_to_journal(trade)
-                            st.toast(f"✅ {trade['Stock']} saved to Trade Journal!")
+                            st.toast(f"✅ {trade['Stock']} journal mein add ho gaya!")
 
-                    # TradingView Chart Embed in Expander
-                    with st.expander(f"📊 View Interactive Live Chart for {trade['Stock']}"):
-                        tv_symbol = f"NSE:{trade['Stock']}"
-                        tv_html = f"""
-                        <div class="tradingview-widget-container" style="height:400px;width:100%">
-                          <iframe src="https://s.tradingview.com/widgetembed/?frameElementId=tradingview_widget&symbol={tv_symbol}&interval=D&hidesidetoolbar=1&symboledit=1&saveimage=1&toolbarbg=f1f3f6&studies=[]&theme=light&style=1&timezone=Asia%2FKolkata" style="width: 100%; height: 400px; border: 0;"></iframe>
-                        </div>
-                        """
-                        components.html(tv_html, height=410)
+                    with b_col3:
+                        tv_link = f"https://in.tradingview.com/chart/?symbol=NSE:{trade['Stock']}"
+                        st.markdown(
+                            f'<a href="{tv_link}" target="_blank">'
+                            f'<button style="background-color:#1E53E5;color:white;width:100%;padding:8px;border:none;border-radius:6px;cursor:pointer;font-weight:bold;">📈 Open TradingView</button>'
+                            f'</a>',
+                            unsafe_allow_html=True
+                        )
+
+                    # In-App Clean Technical Chart
+                    with st.expander(f"📊 Technical Trend Chart ({trade['Stock']})"):
+                        chart_df = trade["df"]
+                        fig, ax = plt.subplots(figsize=(10, 4))
+                        ax.plot(chart_df.index, chart_df["Close"], label="Close Price", color="#1f77b4", linewidth=1.8)
+                        ax.plot(chart_df.index, chart_df["EMA_20"], label="20 EMA (Fast)", color="#2ca02c", linestyle="--", linewidth=1.5)
+                        ax.plot(chart_df.index, chart_df["EMA_50"], label="50 EMA (Slow)", color="#d62728", linestyle="--", linewidth=1.5)
+                        ax.axhline(trade["StopLoss"], color="red", linestyle=":", label=f"Stop Loss (₹{trade['StopLoss']})")
+                        ax.set_title(f"{trade['Stock']} - Trend & EMA Setup", fontsize=12, fontweight='bold')
+                        ax.legend(loc="upper left")
+                        ax.grid(True, alpha=0.3)
+                        st.pyplot(fig)
+                        plt.close(fig)
                         
                     st.divider()
         else:
-            st.info("Scanner execution completed. No trade setup matching current criteria.")
+            st.info("Scan complete. Aaj koi setup filter match nahi hua.")
 
 # TAB 2: Trade Journal
 with tabs[1]:
     st.subheader("📓 Trade Management Journal")
-    st.caption("Track your executed trades and download performance logs.")
+    st.caption("Apne saved trades track karein aur CSV download karein.")
     
     if os.path.exists(JOURNAL_FILE):
         j_df = pd.read_csv(JOURNAL_FILE)
@@ -220,23 +233,19 @@ with tabs[1]:
             mime="text/csv"
         )
     else:
-        st.info("Journal is currently empty. Click '➕ Add to Journal' on any trade setup to record it here.")
+        st.info("Journal abhi khali hai. Live Scanner se kisi bhi trade ko add karein.")
 
-# TAB 3: Strategy Playbook & Checklist
+# TAB 3: Strategy Rules
 with tabs[2]:
-    st.subheader("📚 Pro Swing Trading Playbook")
-    
+    st.subheader("📚 Pro Swing Trading Rules")
     st.markdown("""
-    ### 🛡️ **Core Principles of Swing Trading**
-    * **1% Rule:** Never risk more than 1% of your total capital on a single setup.
-    * **Asymmetrical Risk-to-Reward:** Always target at least $1:2$. A 50% win rate generates solid alpha when losses are small and winners run.
-    * **Trend Alignment:** Only enter long positions when 20 EMA is comfortably above 50 EMA.
+    * ⚖️ **1% Risk Rule:** Kisi bhi trade mein capital ka 1% se zyada risk na lein.
+    * 🎯 **1:2 Risk to Reward:** Har ₹1 risk par minimum ₹2 ka target plan karein.
+    * ⏳ **Patience:** Setup trigger hone ke baad 1 se 3 hafte ka time frame le kar chalein.
     """)
-    
     st.markdown("---")
-    st.subheader("📋 Pre-Trade Mental Checklist")
-    st.checkbox("1. 20 EMA is above 50 EMA on Daily Chart (Uptrend confirmed)")
-    st.checkbox("2. RSI is above 55 (Strong bullish momentum)")
-    st.checkbox("3. Stop loss is strictly placed at the recent 7-day swing low")
-    st.checkbox("4. Position size is calculated using the 1% risk rule, not gut feeling")
-    st.checkbox("5. I accept the loss beforehand if the stop loss gets triggered")
+    st.subheader("📋 Pre-Trade Checklist")
+    st.checkbox("1. 20 EMA > 50 EMA daily chart par confirm hai.")
+    st.checkbox("2. RSI 55 se upar momentum show kar raha hai.")
+    st.checkbox("3. Stop Loss 7-day swing low par set hai.")
+    st.checkbox("4. Quantity 1% formula ke mutabiq li gayi hai.")
